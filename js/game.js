@@ -12,6 +12,10 @@ const database = firebase.database();
 const playersRef = database.ref('players');
 
 const playerName = prompt('Name');
+if (!playerName) {
+  alert('You gotta give us a name!');
+  window.location.reload();
+}
 const playerRef = database.ref(`players/${playerName}`);
 
 const game = new Phaser.Game({
@@ -59,6 +63,35 @@ function create () {
   platforms.create(50, 250, 'ground');
   platforms.create(750, 220, 'ground');
 
+  player = this.physics.add.sprite(100, 450, 'dude');
+  player.setBounce(0.2);
+  player.setCollideWorldBounds(true);
+  playerNameText = this.add.text(
+    player.body.position.x,
+    player.body.position.y - 10,
+    playerName, 
+    { fontSize: '12px', fill: '#000'}
+  );
+
+  playerRef.set({
+    name: playerName,
+    x: 100,
+    y: 450,
+  });
+
+  playersRef.on('value', snapshot => {
+    const localPlayers = players.getChildren();
+    Object.entries( snapshot.val() )
+      .forEach(([key, data]) => {
+        console.log(key)
+        if (!localPlayers.includes(key)) {
+          createPlayer(data);
+        } else {
+          checkPlayerForUpdates(data);
+        }
+      });
+  });
+
   // cursors = this.input.keyboard.createCursorKeys();
   // wasd
   cursors = this.input.keyboard.addKeys({
@@ -66,7 +99,7 @@ function create () {
     down:Phaser.Input.Keyboard.KeyCodes.S,
     left:Phaser.Input.Keyboard.KeyCodes.A,
     right:Phaser.Input.Keyboard.KeyCodes.D
-  })
+  });
   
   this.anims.create({
     key: 'left',
@@ -87,20 +120,8 @@ function create () {
       frameRate: 10,
       repeat: -1,
   });
-
-  player = this.physics.add.sprite(100, 450, 'dude');
-  player.setBounce(0.2);
-  player.setCollideWorldBounds(true);
-  
-  playerRef.set({
-    name: playerName,
-    score: 0,
-    x: 100,
-    y: 450,
-  });
   
   scoreText = this.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000'});
-  playerNameText = this.add.text(player.body.position.x, player.body.position.y - 10, playerName, { fontSize: '12px', fill: '#000'})
 
   stars = this.physics.add.group({
     key: 'star',
@@ -117,12 +138,13 @@ function create () {
   this.physics.add.collider(stars, platforms);
   this.physics.add.collider(bombs, platforms);
   this.physics.add.collider(player, bombs, hitBomb, null, this);
-
   this.physics.add.overlap(player, stars, collectStar, null, this);
 };
 
 function update () {
-  checkMovement();
+  if (player) {
+    checkMovement();
+  }
 };
 
 const checkMovement = () => {
@@ -139,8 +161,22 @@ const checkMovement = () => {
   if (cursors.up.isDown && player.body.touching.down) {
     player.setVelocityY(-350);
   }
-  playerNameText.x = player.body.position.x;
-  playerNameText.y = player.body.position.y - 10;
+
+  // causing inifite loop...
+  // const playerHasMoved = cursors.left.isDown || cursors.left.isDown || cursors.up.isDown && player.body.touching.down;
+  // if (playerHasMoved) {
+  //   playerRef.transaction(function(origPlayer) {
+  //     const updatedPlayer = {
+  //       ...origPlayer,
+  //       x: player.x,
+  //       y: player.y,
+  //     }
+  //     return updatedPlayer;
+  //   });
+  // }
+
+  playerNameText.x = player.x;
+  playerNameText.y = player.y - 10;
 };
 
 const collectStar = (player, star) => {
@@ -168,16 +204,19 @@ function hitBomb(player, bomb) {
   gameOver = true;
 }
 
-playersRef.on('value', snapshot => {
-  console.log(players.getChildren())
-  // Object.entries(snapshot.val())
-  //   .filter(p => p[0] !== playerName)
-  //   .forEach(([key, data]) => {
-  //     console.log(key, data)
-  //   });
-  // updatePlayer(snapshot.val());
-});
-
-function updatePlayer({ name, x, y}) {
+function createPlayer({ name, x, y}) {
   players.create(x, y, 'dude');
 }
+
+function checkPlayerForUpdates(data) {
+  console.log(data)
+}
+
+// playerRef.update({
+//   onlineState: true,
+//   status: "I'm online."
+// });
+// playerRef.onDisconnect().update({
+//  onlineState: false,
+//  status: "I'm offline."
+// });
