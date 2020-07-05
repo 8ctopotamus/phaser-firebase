@@ -1,3 +1,9 @@
+const playerName = `${Math.floor(Math.random() * 1000)}`; // prompt('Name');
+if (!playerName) {
+  alert('You gotta give us a name!');
+  window.location.reload();
+}
+
 firebase.initializeApp({
   apiKey: "AIzaSyBdAc7UVmUJFFRTyW7YQPrwmGnY9ubtRks",
   authDomain: "phasersandbox.firebaseapp.com",
@@ -8,14 +14,9 @@ firebase.initializeApp({
   appId: "1:886191655531:web:a949bc5486d5761022bf2e",
   measurementId: "G-S7W0ZWX89N"
 });
+
 const database = firebase.database();
 const playersRef = database.ref('players');
-
-const playerName = prompt('Name');
-if (!playerName) {
-  alert('You gotta give us a name!');
-  window.location.reload();
-}
 const playerRef = database.ref(`players/${playerName}`);
 
 const game = new Phaser.Game({
@@ -43,6 +44,7 @@ let cursors;
 let scoreText;
 let gameOver;
 let score = 0;
+let connectionIds = [];
 
 function preload () {
   this.load.image('sky', 'assets/sky.png');
@@ -79,27 +81,16 @@ function create () {
     y: 450,
   });
 
-  playersRef.on('value', snapshot => {
-    const localPlayers = players.getChildren();
-    Object.entries( snapshot.val() )
-      .forEach(([key, data]) => {
-        console.log(key)
-        if (!localPlayers.includes(key)) {
-          createPlayer(data);
-        } else {
-          checkPlayerForUpdates(data);
-        }
-      });
-  });
+  playersRef.on('value', handlePlayersDataChange);
 
-  // cursors = this.input.keyboard.createCursorKeys();
+  cursors = this.input.keyboard.createCursorKeys();
   // wasd
-  cursors = this.input.keyboard.addKeys({
-    up:Phaser.Input.Keyboard.KeyCodes.W,
-    down:Phaser.Input.Keyboard.KeyCodes.S,
-    left:Phaser.Input.Keyboard.KeyCodes.A,
-    right:Phaser.Input.Keyboard.KeyCodes.D
-  });
+  // cursors = this.input.keyboard.addKeys({
+  //   up:Phaser.Input.Keyboard.KeyCodes.W,
+  //   down:Phaser.Input.Keyboard.KeyCodes.S,
+  //   left:Phaser.Input.Keyboard.KeyCodes.A,
+  //   right:Phaser.Input.Keyboard.KeyCodes.D
+  // });
   
   this.anims.create({
     key: 'left',
@@ -151,9 +142,11 @@ const checkMovement = () => {
   if (cursors.left.isDown) {
     player.setVelocityX(-160);
     player.anims.play('left', true);
+    emitMove();
   } else if (cursors.right.isDown) {
     player.setVelocityX(160);
     player.anims.play('right', true);
+    emitMove();
   } else {
     player.setVelocityX(0);
     player.anims.play('turn');
@@ -162,22 +155,24 @@ const checkMovement = () => {
     player.setVelocityY(-350);
   }
 
-  // causing inifite loop...
-  // const playerHasMoved = cursors.left.isDown || cursors.left.isDown || cursors.up.isDown && player.body.touching.down;
-  // if (playerHasMoved) {
-  //   playerRef.transaction(function(origPlayer) {
-  //     const updatedPlayer = {
-  //       ...origPlayer,
-  //       x: player.x,
-  //       y: player.y,
-  //     }
-  //     return updatedPlayer;
-  //   });
-  // }
-
   playerNameText.x = player.x;
   playerNameText.y = player.y - 10;
 };
+
+const emitMove = () => {
+  try {
+    playerRef.transaction(function(origPlayer) {
+      const updatedPlayer = {
+        ...origPlayer,
+        x: player.x,
+        y: player.y,
+      };
+      return updatedPlayer;
+    });
+  } catch(err) {
+    console.log(err)
+  }
+}
 
 const collectStar = (player, star) => {
   star.disableBody(true, true);
@@ -205,18 +200,28 @@ function hitBomb(player, bomb) {
 }
 
 function createPlayer({ name, x, y}) {
+  connectionIds.push(name);
   players.create(x, y, 'dude');
 }
 
-function checkPlayerForUpdates(data) {
-  console.log(data)
+function checkEnemyForUpdates(data, i) {
+  console.log(players.children(i))
+  console.log('updating enemy', i)
 }
 
-// playerRef.update({
-//   onlineState: true,
-//   status: "I'm online."
-// });
-// playerRef.onDisconnect().update({
-//  onlineState: false,
-//  status: "I'm offline."
-// });
+const handlePlayersDataChange = snapshot => {
+  console.log('data changing')
+
+  Object.entries(snapshot.val())
+    .forEach(([key, data], i) => {
+      if (key !== playerName) {
+        if (!connectionIds.includes(key)) {
+          createPlayer(data);
+        } else {
+          checkEnemyForUpdates(data, i);
+        }
+      }
+    });
+}
+
+playerRef.onDisconnect().remove();
